@@ -16,9 +16,11 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import include, path
-from pilatesapp.views import email
+#from pilatesapp.views import email
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path("", email),
+    #path("", include('pilatesapp.urls')),
+    path('api/', include('pilatesapp.urls'))
+
 ]
