@@ -142,3 +142,5 @@ REST_FRAMEWORK = {
 }
 
 AUTH_USER_MODEL = 'pilatesapp.User'
+# settings.py
+DEFAULT_PASSWORD = 'pilatesdalvian'

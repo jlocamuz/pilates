@@ -1,62 +1,63 @@
-from django.shortcuts import redirect, render
-from django.core.mail import send_mail
-from django.conf import settings
-from django.http import HttpResponse
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions
+from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import User, Turno
-from .serializers import UserSerializer, TurnoSerializer
+from .models import Turno, User
+from .serializers import TurnoSerializer, UserSerializer
+from django.utils import timezone
+from django.db.models import F
 
-# def email(request):    
-#     subject = 'Thank you for registering to our site'
-#     message = ' it  means a world to us '
-#     email_from = settings.EMAIL_HOST_USER
-#     recipient_list = ['j.locamuz@alumno.um.edu.ar',]   
-#     #send_mail( subject, message, email_from, recipient_list, fail_silently=False)  
-#     return HttpResponse('email enviado desde jlocamuz@gmail.com')
-
-
-# ViewSet para gestionar usuarios (solo admins pueden crear/editar usuarios)
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAdminUser]
 
-# ViewSet para gestionar turnos
-# ViewSet para gestionar turnos
 class TurnoViewSet(viewsets.ModelViewSet):
     queryset = Turno.objects.all()
     serializer_class = TurnoSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # Los administradores ven todos los turnos, los usuarios solo los suyos
-        if self.request.user.is_admin:
+        user = self.request.user
+        if user.has_role('admin'):
             return Turno.objects.all()
-        return Turno.objects.filter(user=self.request.user)
+        elif user.has_role('profesor'):
+            return Turno.objects.filter(profesor=user)
+        elif user.has_role('alumno'):
+            return Turno.objects.filter(alumnos=user)
+        return Turno.objects.none()
 
-    def perform_create(self, serializer):
-        # Solo administradores pueden asignar turnos
-        if self.request.user.is_admin:
-            serializer.save()
-        else:
-            raise PermissionError("No tienes permisos para crear turnos.")
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def disponibles(self, request):
+        turnos = Turno.objects.filter(max_alumnos__gt=F('alumnos__count'))
+        serializer = self.get_serializer(turnos, many=True)
+        return Response(serializer.data)
 
-    def update(self, request, *args, **kwargs):
-        # Obtener el objeto del turno que se quiere actualizar
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def cancelar_turno(self, request, pk=None):
         turno = self.get_object()
+        alumno = request.user
+        if alumno in turno.alumnos.all():
+            turno.alumnos.remove(alumno)
+            return Response({'message': 'Te has dado de baja del turno y tu lugar ha sido liberado'}, status=200)
+        return Response({'error': 'No estás registrado en este turno'}, status=400)
 
-        # Verificar si el usuario tiene permisos para actualizar este turno
-        if request.user.is_admin or turno.user == request.user:
-            # Permitir que el administrador o el dueño del turno actualice los datos
-            partial = kwargs.pop('partial', False)
-            serializer = self.get_serializer(turno, data=request.data, partial=partial)
-            serializer.is_valid(raise_exception=True)
-            self.perform_update(serializer)
-            return Response(serializer.data)
-        else:
-            # Si el usuario no tiene permisos, devolver un error de permiso
-            return Response({"detail": "No tienes permisos para actualizar este turno."}, status=status.HTTP_403_FORBIDDEN)
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def reprogramar(self, request):
+        alumno = request.user
+        hoy = timezone.now().date()
+        turnos_disponibles = Turno.objects.filter(
+            dia=hoy.strftime("%A"),
+            max_alumnos__gt=F('alumnos__count')
+        ).exclude(alumnos=alumno)
+        serializer = self.get_serializer(turnos_disponibles, many=True)
+        return Response(serializer.data)
 
-    def perform_update(self, serializer):
-        # Guardar los cambios del turno
-        serializer.save()
+    @action(detail=False, methods=['get'])
+    def turnos_del_mes(self, request):
+        year = request.query_params.get('year')
+        month = request.query_params.get('month')
+
+        if not year or not month:
+            return Response({"error": "Año y mes son requeridos"}, status=400)
+
+        turnos = Turno.turnos_en_mes(int(year), int(month))
+        return Response(turnos)

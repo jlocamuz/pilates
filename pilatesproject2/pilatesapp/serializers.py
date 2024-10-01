@@ -4,9 +4,11 @@ from .models import User, Turno
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'is_admin']
+        fields = ('id', 'email', 'first_name', 'last_name', 'role', 'username')  # Agrega los campos que necesites
+
+
 
 class TurnoSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Turno
-        fields = ['id', 'dia', 'hora', 'disponible', 'user']
+            model = Turno
+            fields = ['id', 'profesor', 'alumnos', 'dia', 'hora']
