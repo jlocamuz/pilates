@@ -1,0 +1,10 @@
+<h1>Hi {{username}} </h1>
+
+{% for message in messages %}
+    <p id='messages'>{{ message }}</p>
+{% endfor %}
+
+<form method="POST" action="{% url 'logout' %}">
+    {% csrf_token %}
+    <button type="submit">Logout</button>
+</form>
